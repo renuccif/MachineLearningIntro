@@ -219,15 +219,17 @@ toplot$Variable = factor(toplot$Variable, levels = toplot$Variable)
 # if we want to do any features selection, start with features in the following order.
 ggplot(toplot) + geom_point(aes(x = Variable, y = Importance, colour = Variable)) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4), legend.position = "none") + xlab("") + ylab("") + ggtitle("Giny purity index - 'predictive power' of each variable ")
 
-# Number of features optimization
+# features set optimization
+# We could add another model to train in the loop and use the same features selection process for it.
 for(i in 1:nrow(featuresImportance)) {
   formula = paste("y ~",paste(featuresImportance[1:i,"Variable"],collapse = " + "))
-  rf_dummy_subset = randomForest(as.formula(formula),data = learn, na.action = na.roughfix)
-#   pred_rf_dummy_subset = predict(rf_dummy_subset,testNoNA)  
-  pred_rf_dummy_subset = predict(rf_dummy_subset,testNoNA,type = "p")
-  featuresImportance[i,"AUC"] = auc(roc(1*(pred_rf_dummy_subset==" - 50000."),1*(test$y == " - 50000.")))
+  rf_dummy_subset = randomForest(as.formula(formula),data = learnNoNA, ntree = 100)
+    pred_rf_dummy_subset = predict(rf_dummy_subset,testNoNA)  
+#   pred_rf_dummy_subset = predict(rf_dummy_subset,test,type = "p")
+#   featuresImportance[i,"AUC"] = auc(roc(1*(pred_rf_dummy_subset==" - 50000."),1*(test$y == " - 50000.")))
   featuresImportance[i,"AUC"] = auc(roc(1*(pred_rf_dummy_subset[,1]),1*(test$y == " - 50000.")))  
   print(i)
+  print(featuresImportance[i,"AUC"])
 }
 
 # Number of trees optimization
@@ -242,4 +244,8 @@ for(i in 1:nrow(featuresImportance)) {
 
 rm(list = ls())
 load("3 - tmp.RData")
+
+
+
+
 
