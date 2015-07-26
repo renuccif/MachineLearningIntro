@@ -1,0 +1,239 @@
+
+###########################
+###########################
+######### TEST VP #########
+###########################
+###########################
+###########################
+
+
+# change wd here
+setwd("/Users/renucciflorent/Desktop/vp/")
+
+
+# loading libraries - please keep alphabetical order
+library(car)
+library(caret)
+library(corrplot)
+library(ggplot2)
+library(missForest)
+library(pROC)
+library(randomForest)
+library(rpart)
+library(scales)
+
+
+
+#####################
+### 1 - LOAD DATA ###
+#####################
+#####################
+
+
+cat("\014")
+rm(list = ls())
+
+
+if (c("census_income_learn.csv","census_income_test.csv") %in% list.files()) {
+  learn = read.csv("census_income_learn.csv", header = F)
+  test = read.csv("census_income_test.csv", header = F)
+} else {
+  print("please check wd")
+}
+
+#copy and paste from the help text file, removing unpresent cols and replacing spaces and dashes with _
+colNames = c("age","class_of_worker","industry_code","occupation_code","education","wage_per_hour","enrolled_in_edu_inst_last_wk","marital_status","major_industry_code","major_occupation_code","mace","hispanic_Origin","sex","member_of_a_labor_union","reason_for_unemployment","full_or_part_time_employment_stat","capital_gains","capital_losses","divdends_from_stocks","tax_filer_status","region_of_previous_residence","state_of_previous_residence","detailed_household_and_family_stat","detailed_household_summary_in_household","instance_weight","migration_code_change_in_msa","migration_code_change_in_reg","migration_code_move_within_reg","live_in_this_house_1_year_ago","migration_prev_res_in_sunbelt","num_persons_worked_for_employer","family_members_under_18","country_of_birth_father","country_of_birth_mother","country_of_birth_self","citizenship","own_business_or_self_employed","taxable_income_amount","fill_inc_questionnaire_for_veterans_admin","veterans_benefits","weeks_worked_in_year","y")
+
+colnames(learn) = colNames
+colnames(test) = colNames
+
+# quick sanity check
+summary(data);summary(test)
+head(learn);head(test)
+dim(learn);dim(test)
+str(learn);str(test)
+
+# factorizing the data preparation process, un-cluttering memory
+learn$group = "learn"
+test$group = "test"
+
+data = rbind(learn,test)
+data$group = as.factor(data$group)
+
+rm(learn,test,colNames)
+
+save.image("1 - loaded.RData")
+
+
+
+
+########################
+### 2 - PREPARE DATA ###
+########################
+########################
+
+
+
+cat("\014")
+rm(list = ls())
+load("1 - loaded.RData")
+
+
+
+for (col in colnames(data)) {
+  
+  # remove funky characters
+  data[,col] = recode(data[,col]," c(' ?', ' NA', ' Not in universe', ' Not in universe or children', ' Not in universe under 1 year old' ) = NA ")  
+  
+  # 'factorize' unfrequent numeric values
+  if(is.numeric(data[,col]) & length(unique(data[,col]))<10) {
+    data[,col] = factor(data[,col])
+  }  
+}
+rm(col)
+
+save.image("2 - prepared.RData")
+
+
+
+##############################
+### 3 - DATA VISUALIZATION ###
+##############################
+##############################
+
+
+
+cat("\014")
+rm(list = ls())
+load("2 - prepared.RData")
+
+
+# I'm only looking at distributions/histograms here for the sake of simplicify. If I had a few hours I'd have looked a several variables at the same time (some features may share the same information toward y). The same reasoning would have applied.
+
+# create a pdf in the wd. Ignore the warning messages. /!\ close the pdf before running this piece of code.
+# this is less useful than proper features selection but non-technical people (i.e. clients) like that. 
+pdf("Features distributions.pdf",width = 17, height = 10)
+
+for(col in setdiff(colnames(data),c("y","group"))) {
+
+  # remove the NAs, they skew the distribution
+  tmp = data[which(!is.na(data[,col])),]
+  hist = ggplot(tmp,aes_string(x = col, fill = "y", colour = "y")) + ggtitle(paste(gsub("_"," ",col),":", round(100-nrow(tmp)/nrow(data)*100,2),"% of missing values")) + xlab("") + ylab("")
+  
+  if(is.numeric(data[,col])) {
+    hist = hist + geom_density(alpha = .3) + geom_histogram(position = "dodge",alpha = .3, aes(y = ..density..)) + scale_y_continuous(labels = percent)
+    box = ggplot(tmp,aes_string(x = "y", y = col, fill = "y", colour = "y")) + geom_boxplot(aes_string(y = col)) + ggtitle(paste(gsub("_"," ",col),":", round(100-nrow(tmp)/nrow(data)*100,2),"% of missing values")) + xlab("") + ylab("")
+    print(box)    
+  } else {
+    hist = hist  + geom_histogram(position = "dodge", alpha = .3) + facet_grid( y ~ ., scale = "free_y") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  }
+  
+  print(hist)
+  rm(hist,tmp,col)
+}
+
+dev.off()
+# If I had more time I would have produced a few other visualizations and put it on a nice Shiny dashboard they can play with. 
+
+
+############################
+### 4 - MACHINE LEARNING ###
+############################
+############################
+
+
+
+cat("\014")
+rm(list = ls())
+load("2 - prepared.RData")
+
+# --- IMPORTANT NOTE --- : If I had more time I would look at the previous features, get a good idea of which ones are discriminatory and for which values, then speak with experts in the field to combine them / engineer them. I'm just gonna use the ones I like most here, as-is. Example of interesting observation : p13, females have less chances to make good money. p8 : married = good money (obviously). 
+
+
+# re-combine the datasets
+learn = data[which(data$group == "learn"),-which(colnames(data) == "group")]
+test = data[which(data$group == "test"),-which(colnames(data) == "group")]
+rm(data)
+
+# good order of magnitude for the number of features to keep (just a rule of thumbs)
+log(nrow(learn))/log(2) 
+
+# data is unbalanced -> let's use AUC
+prop.table(table(learn$y))
+
+# just for fun
+tree = rpart(data = learn, y ~ .)
+pred_tree = predict(tree,test,type ="class")
+confusionMatrix(pred_tree,test$y)
+
+roc(1*(pred_tree==" - 50000."),1*(test$y == " - 50000."))
+# AUC : 0.82
+
+#  I'll start with a random forest on the full train dataset without features selection, just to have a baseline.
+
+# missing data imputation minimizing NRMSE (other criterions would have to be tried out for comparison). Because classic RF implementation does not handle missing values.
+# --- IMPORTANT NOTE --- : This is taking a crazy amount of time. Let it run overnight.
+learnNoNA = missForest(learn)$ximp
+testNoNA = missForest(test)$ximp
+
+rf_dummy = randomForest(y ~ .,data = learn, na.action = na.roughfix)
+rf = randomForest(y ~ .,data = learnNoNA)
+
+pred_rf_dummy = predict(rf_dummy,testNoNA)
+pred_rf = predict(rf,testNoNA)
+
+confusionMatrix(pred_rf_dummy,testNoNA$y)
+confusionMatrix(pred_rf,testNoNA$y)
+
+roc(1*(pred_rf_dummy==" - 50000."),1*(test$y == " - 50000."))
+roc(1*(pred_rf==" - 50000."),1*(test$y == " - 50000."))
+
+# result : AUC = 0.88
+# RF does better than CART, but the smart implementation increases AUC by 0.0004 which is ridiculous. I would use CART for a quick time to market, and aim at dummy RF long-term.
+
+plot(rf_dummy)
+# there is a slight increase even above 500 trees. Depending on the business goal and the system available I would either suggest 200 trees or 1000.
+
+save.image("3 - tmp.RData")
+
+featuresImportance = importance(rf)
+featuresImportance = as.data.frame(cbind(rownames(featuresImportance),featuresImportance))
+rownames(featuresImportance) = NULL
+colnames(featuresImportance) = c("Variable","Importance")
+
+featuresImportance$Importance = as.numeric(as.character(featuresImportance$Importance))
+featuresImportance = featuresImportance[order(-featuresImportance$Importance),] 
+
+toplot = featuresImportance
+toplot$Variable = gsub("_"," ",toplot$Variable)
+toplot$Variable = factor(toplot$Variable, levels = toplot$Variable)
+
+# I could also have converted categorical variables to dummy variables and plot the correlation matrix.
+# I could also have done regularization or a stepwise regression.
+
+# if we want to do any features selection, start with features in the following order.
+ggplot(toplot) + geom_point(aes(x = Variable, y = Importance, colour = Variable)) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4), legend.position = "none") + xlab("") + ylab("") + ggtitle("Giny purity index")
+
+# Number of features optimization
+for(i in 1:nrow(featuresImportance)) {
+  formula = paste("y ~",paste(featuresImportance[1:i,"Variable"],collapse = " + "))
+  rf_dummy_subset = randomForest(as.formula(formula),data = learn, na.action = na.roughfix)
+  pred_rf_dummy_subset = predict(rf_dummy_subset,testNoNA)
+  featuresImportance[i,"AUC"] = auc(roc(1*(pred_rf_dummy_subset==" - 50000."),1*(test$y == " - 50000.")))
+  print(i)
+}
+
+# Number of trees optimization
+# (same with playing with the number of trees that doubles at each iteration...)
+
+### 99 times out of 100, either RF or ANN + smart features engineering have the best results. My next steps would be : try ANN on whitened matrix, do some features engineering. I'd have preferred to do CV instead of plain train/test split. 
+# ANN also has a feature selection technique that I would have used.
+
+
+
+
+
+
+
+
+
