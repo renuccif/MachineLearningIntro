@@ -66,7 +66,6 @@ save.image("1 - loaded.RData")
 
 
 
-
 ########################
 ### 2 - PREPARE DATA ###
 ########################
@@ -122,10 +121,10 @@ for(col in setdiff(colnames(data),c("y","group"))) {
   
   if(is.numeric(data[,col])) {
     hist = hist + geom_density(alpha = .3) + geom_histogram(position = "dodge",alpha = .3, aes(y = ..density..)) + scale_y_continuous(labels = percent)
-    box = ggplot(tmp,aes_string(x = "y", y = col, fill = "y", colour = "y")) + geom_boxplot(aes_string(y = col)) + ggtitle(paste(gsub("_"," ",col),":", round(100-nrow(tmp)/nrow(data)*100,2),"% of missing values")) + xlab("") + ylab("")
-    print(box)    
+    box = ggplot(tmp,aes_string(x = "y", y = col, fill = "y", colour = "y")) + geom_boxplot(aes_string(y = col), alpha = .3) + ggtitle(paste(gsub("_"," ",col),":", round(100-nrow(tmp)/nrow(data)*100,2),"% of missing values")) + xlab("") + ylab("")
+    print(box)
   } else {
-    hist = hist  + geom_histogram(position = "dodge", alpha = .3) + facet_grid( y ~ ., scale = "free_y") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    hist = hist  + geom_histogram(position = "dodge", alpha = .3) + facet_grid( y ~ ., scale = "free_y") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4))
   }
   
   print(hist)
@@ -166,8 +165,7 @@ tree = rpart(data = learn, y ~ .)
 pred_tree = predict(tree,test,type ="class")
 confusionMatrix(pred_tree,test$y)
 
-roc(1*(pred_tree==" - 50000."),1*(test$y == " - 50000."))
-# AUC : 0.82
+auc(roc(1*(pred_tree==" - 50000."),1*(test$y == " - 50000.")))
 
 #  I'll start with a random forest on the full train dataset without features selection, just to have a baseline.
 
@@ -182,19 +180,17 @@ rf = randomForest(y ~ .,data = learnNoNA)
 pred_rf_dummy = predict(rf_dummy,testNoNA)
 pred_rf = predict(rf,testNoNA)
 
-confusionMatrix(pred_rf_dummy,testNoNA$y)
 confusionMatrix(pred_rf,testNoNA$y)
 
-roc(1*(pred_rf_dummy==" - 50000."),1*(test$y == " - 50000."))
-roc(1*(pred_rf==" - 50000."),1*(test$y == " - 50000."))
-
+# roc(1*(pred_rf_dummy==" - 50000."),1*(test$y == " - 50000."))
+# roc(1*(pred_rf==" - 50000."),1*(test$y == " - 50000."))
 # result : AUC = 0.88
+
 # RF does better than CART, but the smart implementation increases AUC by 0.0004 which is ridiculous. I would use CART for a quick time to market, and aim at dummy RF long-term.
 
-plot(rf_dummy)
+plot(rf)
 # there is a slight increase even above 500 trees. Depending on the business goal and the system available I would either suggest 200 trees or 1000.
 
-save.image("3 - tmp.RData")
 
 featuresImportance = importance(rf)
 featuresImportance = as.data.frame(cbind(rownames(featuresImportance),featuresImportance))
@@ -212,7 +208,7 @@ toplot$Variable = factor(toplot$Variable, levels = toplot$Variable)
 # I could also have done regularization or a stepwise regression.
 
 # if we want to do any features selection, start with features in the following order.
-ggplot(toplot) + geom_point(aes(x = Variable, y = Importance, colour = Variable)) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4), legend.position = "none") + xlab("") + ylab("") + ggtitle("Giny purity index")
+ggplot(toplot) + geom_point(aes(x = Variable, y = Importance, colour = Variable)) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4), legend.position = "none") + xlab("") + ylab("") + ggtitle("Giny purity index - 'predictive power' ")
 
 # Number of features optimization
 for(i in 1:nrow(featuresImportance)) {
@@ -230,8 +226,11 @@ for(i in 1:nrow(featuresImportance)) {
 # ANN also has a feature selection technique that I would have used.
 
 
+save.image("3 - tmp.RData")
 
 
+rm(list = ls())
+load("3 - tmp.RData")
 
 
 
